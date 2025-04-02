@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 const (
@@ -27,7 +30,6 @@ func NewBoard() *Board {
 
 func (b *Board) addRandomTile() {
 	var emptyCells [][2]int
-
 	for i := 0; i < GRID_WIDTH; i++ {
 		for j := 0; j < GRID_HEIGHT; j++ {
 			if b.grid[i][j] == 0 {
@@ -35,29 +37,16 @@ func (b *Board) addRandomTile() {
 			}
 		}
 	}
-
 	if len(emptyCells) == 0 {
 		b.over = true
 		return
 	}
-
 	pos := emptyCells[rand.Intn(len(emptyCells))]
-	if rand.Intn(10) < 9 { // 90% chance for 2, 10% for 4
+	if rand.Intn(10) < 9 {
 		b.grid[pos[0]][pos[1]] = 2
 	} else {
 		b.grid[pos[0]][pos[1]] = 4
 	}
-}
-
-func (b *Board) PrintBoard() {
-	fmt.Println("Score:", b.score)
-	for i := 0; i < GRID_HEIGHT; i++ {
-		for j := 0; j < GRID_WIDTH; j++ {
-			fmt.Printf("%4d ", b.grid[i][j])
-		}
-		fmt.Println()
-	}
-	fmt.Println()
 }
 
 func (b *Board) MoveUp() bool {
@@ -157,35 +146,95 @@ func (b *Board) MoveRight() bool {
 }
 
 func main() {
-	b := NewBoard()
-	b.PrintBoard()
+	app := tview.NewApplication()
+	board := NewBoard()
 
-	for !b.over {
-		var move string
-		fmt.Scan(&move)
-		moved := false
+	// Create text view for displaying the game board
+	gridView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetRegions(true).
+		SetWordWrap(false)
 
-		switch move {
-		case "w":
-			moved = b.MoveUp()
-		case "s":
-			moved = b.MoveDown()
-		case "a":
-			moved = b.MoveLeft()
-		case "d":
-			moved = b.MoveRight()
-		case "q":
-			fmt.Println("Game quit")
-			return
+	// Define color function before using it
+	getColor := func(val int) string {
+		switch val {
+		case 2:
+			return "cyan"
+		case 4:
+			return "blue"
+		case 8:
+			return "green"
+		case 16:
+			return "yellow"
+		case 32:
+			return "orange"
+		case 64:
+			return "red"
+		case 128, 256, 512, 1024, 2048:
+			return "purple"
 		default:
-			fmt.Println("Use w/a/s/d to move, q to quit")
-			continue
+			return "white"
+		}
+	}
+
+	// Update display function
+	updateDisplay := func() {
+		var display string
+		display += fmt.Sprintf("[yellow]Score: %d[white]\n\n", board.score)
+		for i := 0; i < GRID_HEIGHT; i++ {
+			for j := 0; j < GRID_WIDTH; j++ {
+				val := board.grid[i][j]
+				if val == 0 {
+					display += "[gray]    -[white] "
+				} else {
+					display += fmt.Sprintf("[%s]%4d[white] ", getColor(val), val)
+				}
+			}
+			display += "\n\n"
+		}
+		if board.over {
+			display += "[red]Game Over![white]\n"
+		}
+		display += "[green]Use arrow keys to move, 'q' to quit[white]"
+		gridView.SetText(display)
+	}
+
+	// Input handling
+	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if board.over {
+			if event.Rune() == 'q' {
+				app.Stop()
+			}
+			return event
 		}
 
-		if moved {
-			b.addRandomTile()
+		moved := false
+		switch event.Key() {
+		case tcell.KeyUp:
+			moved = board.MoveUp()
+		case tcell.KeyDown:
+			moved = board.MoveDown()
+		case tcell.KeyLeft:
+			moved = board.MoveLeft()
+		case tcell.KeyRight:
+			moved = board.MoveRight()
+		case tcell.KeyRune:
+			if event.Rune() == 'q' {
+				app.Stop()
+			}
 		}
-		b.PrintBoard()
+		if moved {
+			board.addRandomTile()
+			updateDisplay()
+		}
+		return event
+	})
+
+	// Initialize display
+	updateDisplay()
+
+	// Run application
+	if err := app.SetRoot(gridView, true).Run(); err != nil {
+		panic(err)
 	}
-	fmt.Println("Game Over! Final Score:", b.score)
 }
